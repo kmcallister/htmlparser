@@ -342,7 +342,7 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
         for (int i = 0; i < MODS.length; i++) {
             String mod = MODS[i];
             if (!mod.equals(n.getName())) {
-                printer.print("mod ");
+                printer.print("use ");
                 printer.print(mod);
                 printer.printLn(";");
             }
@@ -454,7 +454,6 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
 //        } else {
 //            printer.print("~");            
 //        }
-        printer.print("@");
         for (int i = 0; i < n.getArrayCount(); i++) {
             printer.print("[");
         }
@@ -486,10 +485,10 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
             if (!ModifierSet.isPrivate(mods)) {
                 printer.print("pub ");
             }
-            printer.print("const ");
+            printer.print("static ");
             field = false;
         } else if (!ModifierSet.isFinal(mods)) {
-            printer.print("mut ");
+            //printer.print("mut ");
         }
         
         List<VariableDeclarator> vars = n.getVariables();
@@ -559,7 +558,6 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
     }
 
     public void visit(ArrayCreationExpr n, Object arg) {
-        printer.print("new ");
         n.getType().accept(this, arg);
 
         if (n.getDimensions() != null) {
@@ -693,9 +691,10 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
 
     public void visit(CastExpr n, Object arg) {
         printer.print("(");
-        n.getType().accept(this, arg);
-        printer.print(") ");
         n.getExpr().accept(this, arg);
+        printer.print(" as ");
+        n.getType().accept(this, arg);
+        printer.print(")");
     }
 
     public void visit(ClassExpr n, Object arg) {
@@ -704,11 +703,13 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
     }
 
     public void visit(ConditionalExpr n, Object arg) {
+        printer.print("if ");
         n.getCondition().accept(this, arg);
-        printer.print(" ? ");
+        printer.print(" { ");
         n.getThenExpr().accept(this, arg);
-        printer.print(" : ");
+        printer.print(" } else { ");
         n.getElseExpr().accept(this, arg);
+        printer.print(" }");
     }
 
     public void visit(EnclosedExpr n, Object arg) {
@@ -718,6 +719,10 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
     }
 
     public void visit(FieldAccessExpr n, Object arg) {
+        boolean is_length = "length".equals(n.getField());
+        if (is_length) {
+            printer.print("(");
+        }
         String scope = n.getScope().toString();
         printer.print(scope);
         boolean mod = false;
@@ -728,8 +733,8 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
             }
         }
         printer.print(mod ? "::" : ".");
-        if ("length".equals(n.getField())) {
-            printer.print("len() as i32");
+        if (is_length) {
+            printer.print("len() as i32)");
         } else {
             printer.print(n.getField());
         }
@@ -886,8 +891,6 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
             printer.print(".");
         }
 
-        printer.print("new ");
-
         n.getType().accept(this, arg);
 
         printArguments(n.getArgs(), arg);
@@ -1028,7 +1031,9 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
 //            }
 //        }
         if (n.getBody() == null) {
-            printer.print(";");
+            // FIXME
+            //printer.print(";");
+            printer.print("{ }");
         } else {
             printer.print(" ");
             n.getBody().accept(this, arg);
@@ -1092,9 +1097,9 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
                 return;
             }
         }
-        printer.print("assert ");
+        printer.print("assert!(");
         check.accept(this, arg);
-        printer.print(";");
+        printer.print(");");
     }
 
     public void visit(BlockStmt n, Object arg) {
@@ -1218,7 +1223,7 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
     public void visit(BreakStmt n, Object arg) {
         printer.print("break");
         if (n.getId() != null && !"charsetloop".equals(n.getId()) && !"charactersloop".equals(n.getId())) {
-            printer.print(" ");
+            printer.print(" '");
             printer.print(n.getId());
         }
         printer.print(";");
@@ -1385,9 +1390,9 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
             loopUpdate.accept(this, arg);
             printer.printLn(";");
         }
-        printer.print("loop");
+        printer.print("continue");
         if (n.getId() != null) {
-            printer.print(" ");
+            printer.print(" '");
             printer.print(n.getId());
         }
         printer.print(";");
@@ -1419,11 +1424,12 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
             arg = null;
         }
         if (n.getInit() == null && n.getCompare() == null && n.getUpdate() == null) {
-            printer.print("loop ");
             if (label != null) {
+                printer.print("'");
                 printer.print(label);
                 printer.print(": ");
             }
+            printer.print("loop ");
             n.getBody().accept(this, arg);
             return;
         }
