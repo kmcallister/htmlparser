@@ -195,6 +195,13 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
         return printer.getSource();
     }
 
+    public String rustVarName(String name) {
+        if (name.equals("self")) {
+            return "self_";
+        }
+        return name;
+    }
+
     private void printModifiers(int modifiers) {
         if (ModifierSet.isPrivate(modifiers)) {
             printer.print("private ");
@@ -260,7 +267,7 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
                 if (ModifierSet.isStatic(mods) && ModifierSet.isFinal(mods)) {
                     continue;
                 }
-                fields.add(field.getVariables().get(0).getId().getName());
+                fields.add(rustVarName(field.getVariables().get(0).getId().getName()));
                 printer.printLn();
                 member.accept(this, arg);
                 printer.printLn();                
@@ -276,7 +283,7 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
                 if (!(ModifierSet.isStatic(mods) && ModifierSet.isFinal(mods))) {
                     continue;
                 }
-                constants.add(field.getVariables().get(0).getId().getName());
+                constants.add(rustVarName(field.getVariables().get(0).getId().getName()));
                 printer.printLn();
                 member.accept(this, arg);
                 printer.printLn();                
@@ -329,13 +336,13 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
         if (fields.contains(n.getName())) {
             printer.print("self.");
         }
-        printer.print(n.getName());
+        printer.print(rustVarName(n.getName()));
     }
 
     public void visit(QualifiedNameExpr n, Object arg) {
         n.getQualifier().accept(this, arg);
         printer.print(".");
-        printer.print(n.getName());
+        printer.print(rustVarName(n.getName()));
     }
 
     public void visit(ClassOrInterfaceDeclaration n, Object arg) {
@@ -508,7 +515,7 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
         
         VariableDeclaratorId id = decl.getId();
         
-        printer.print(id.getName());
+        printer.print(rustVarName(id.getName()));
         
         printer.print(": ");
         
@@ -1046,7 +1053,7 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
 
         VariableDeclaratorId id = n.getId();
         
-        printer.print(id.getName());
+        printer.print(rustVarName(id.getName()));
 //        if (n.isVarArgs()) {
 //            printer.print("...");
 //        }
