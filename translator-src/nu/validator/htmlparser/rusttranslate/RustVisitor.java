@@ -117,7 +117,7 @@ import nu.validator.htmlparser.cpptranslate.TranslatorUtils;
  * @author Henri Sivonen
  */
 
-public final class RustVisitor extends VoidVisitorAdapter<Object> {
+public final class RustVisitor extends AnnotationHelperVisitor<Object> {
     
     private static final String[] MODS = {
         "Tokenizer",
@@ -138,7 +138,13 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
     private Set<String> constants = new HashSet<String>();
 
     private Expression loopUpdate = null;
-    
+
+    protected final RustTypes rustTypes;
+
+    public RustVisitor(RustTypes rustTypes) {
+        this.rustTypes = rustTypes;
+    }
+
     private static class SourcePrinter {
 
         private int level = 0;
@@ -409,7 +415,40 @@ public final class RustVisitor extends VoidVisitorAdapter<Object> {
             n.getScope().accept(this, arg);
             printer.print(".");
         }
-        printer.print(n.getName());
+
+        String name = n.getName();
+        if ("String".equals(name)) {
+            if (local()) {
+                name = rustTypes.localType();
+            } else if (prefix()) {
+                name = rustTypes.prefixType();
+            } else if (nsUri()) {
+                name = rustTypes.nsUriType();
+            } else if (literal()) {
+                name = rustTypes.literalType();
+            } else if (characterName()) {
+                name = rustTypes.characterNameType();
+            } else {
+                name = rustTypes.stringType();
+            }
+        } else if ("T".equals(name) || "Object".equals(name)) {
+            name = rustTypes.nodeType();
+        } else if ("TokenHandler".equals(name)) {
+            name = rustTypes.classPrefix() + "TreeBuilder";
+        } else if ("EncodingDeclarationHandler".equals(name)) {
+            name = rustTypes.encodingDeclarationHandlerType();
+        } else if ("Interner".equals(name)) {
+            name = rustTypes.internerType();
+        } else if ("TreeBuilderState".equals(name)) {
+            name = rustTypes.treeBuilderStateType();
+        } else if ("DocumentModeHandler".equals(name)) {
+            name = rustTypes.documentModeHandlerType();
+        } else if ("DocumentMode".equals(name)) {
+            name = rustTypes.documentModeType();
+        } else {
+            //name = rustTypes.classPrefix() + name + (suppressPointer ? "" : "*");
+        }
+        printer.print(name);
     }
 
     public void visit(TypeParameter n, Object arg) {

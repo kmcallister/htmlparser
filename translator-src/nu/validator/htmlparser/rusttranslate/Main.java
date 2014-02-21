@@ -125,7 +125,7 @@ public class Main {
             DuplicatingFallThroughRemover dftr = new DuplicatingFallThroughRemover();
             cu.accept(dftr, null);
             
-            RustVisitor visitor = new RustVisitor();
+            RustVisitor visitor = new RustVisitor(new RustTypes(null));
             cu.accept(visitor, null);
             FileOutputStream out = new FileOutputStream(new File(targetDirectory,
                     className + ".rs"));
