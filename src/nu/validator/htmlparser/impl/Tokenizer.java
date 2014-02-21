@@ -704,7 +704,7 @@ public class Tokenizer implements Locator {
      * @param endTagExpectation
      *            the expected end tag for transitioning back to normal
      */
-    public void setStateAndEndTagExpectation(int specialTokenizerState,
+    public void setStateAndEndTagExpectationElt(int specialTokenizerState,
             ElementName endTagExpectation) {
         this.stateSave = specialTokenizerState;
         this.endTagExpectation = endTagExpectation;
@@ -959,7 +959,7 @@ public class Tokenizer implements Locator {
         // ]NOCPP]
     }
 
-    private void appendLongStrBuf(@NoLength char[] buffer, int offset, int length) {
+    private void appendBufLongStrBuf(@NoLength char[] buffer, int offset, int length) {
         int reqLen = longStrBufLen + length;
         if (longStrBuf.length < reqLen) {
             char[] newBuf = new char[reqLen + (reqLen >> 1)];
@@ -974,7 +974,7 @@ public class Tokenizer implements Locator {
      * Append the contents of the smaller buffer to the larger one.
      */
     @Inline private void appendStrBufToLongStrBuf() {
-        appendLongStrBuf(strBuf, 0, strBufLen);
+        appendBufLongStrBuf(strBuf, 0, strBufLen);
     }
 
     /**
