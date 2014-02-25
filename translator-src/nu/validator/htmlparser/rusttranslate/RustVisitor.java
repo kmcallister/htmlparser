@@ -625,6 +625,29 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
     }
 
     public void visit(AssignExpr n, Object arg) {
+        /* Support the common Java idiom of
+
+               void setFoo(Foo foo) {
+                   this.foo = foo;
+                   ...
+
+           If we don't special-case it, we will notice that the 'foo' on the
+           right-hand side is one of the class's data members, and so translate
+           it as 'self.foo' which is incorrect here.  Doing this right would
+           involve keeping track of which variables are shadowed by parameters
+           in each method. */
+        if ((n.getTarget() instanceof FieldAccessExpr)
+            && (n.getValue() instanceof NameExpr)) {
+            FieldAccessExpr target = (FieldAccessExpr) n.getTarget();
+            NameExpr value = (NameExpr) n.getValue();
+
+            if ("this".equals(target.getScope().toString())
+                && target.getField().equals(value.getName())) {
+                printer.print("self." + target.getField() + " = " + value.getName() + ";");
+                return;
+            }
+        }
+
         n.getTarget().accept(this, arg);
         printer.print(" ");
         switch (n.getOperator()) {
@@ -770,6 +793,9 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
             printer.print("(");
         }
         String scope = n.getScope().toString();
+        if ("this".equals(scope)) {
+            scope = "self";
+        }
         printer.print(scope);
         boolean mod = false;
         for (int i = 0; i < MODS.length; i++) {
@@ -903,7 +929,7 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
     }
 
     public void visit(NullLiteralExpr n, Object arg) {
-        printer.print("null");
+        printer.print("None");
     }
 
     public void visit(ThisExpr n, Object arg) {
@@ -925,8 +951,10 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
     public void visit(MethodCallExpr n, Object arg) {
         if (n.getScope() != null) {
             n.getScope().accept(this, arg);
-            printer.print(".");
+        } else {
+            printer.print("self");
         }
+        printer.print(".");
         printer.print(n.getName());
         printArguments(n.getArgs(), arg);
     }
@@ -965,11 +993,8 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
                 printer.print("-");
                 n.getExpr().accept(this, arg);
                 break;
+            // Rust uses ! for bitwise complement as well
             case inverse:
-                printer.print("i32::compl(");
-                n.getExpr().accept(this, arg);
-                printer.print(")");
-                break;
             case not:
                 printer.print("!");
                 n.getExpr().accept(this, arg);
@@ -1042,6 +1067,9 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
         printer.print(n.getName());
 
         printer.print("(");
+        if (!ModifierSet.isStatic(n.getModifiers())) {
+            printer.print("&mut self, ");
+        }
         inMethodSignature = true;
         if (n.getParameters() != null) {
             for (Iterator<Parameter> i = n.getParameters().iterator(); i.hasNext();) {
@@ -1139,7 +1167,13 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
         if (check instanceof BooleanLiteralExpr) {
             BooleanLiteralExpr bool = (BooleanLiteralExpr) check;
             if (!bool.getValue()) {
-                printer.print("fail;");                
+                printer.print("fail!(");
+                if (n.getMessage() != null) {
+                    n.getMessage().accept(this, arg);
+                } else {
+                    printer.print("\"(unknown error)\"");
+                }
+                printer.print(");");
                 return;
             }
         }
