@@ -132,10 +132,12 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
     };
     
     private boolean inMethodSignature = false;
-    
+
+    private String staticsName;
+
     private Set<String> fields = new HashSet<String>();
     
-    private Set<String> constants = new HashSet<String>();
+    private Set<String> statics = new HashSet<String>();
 
     private Expression loopUpdate = null;
 
@@ -270,7 +272,7 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
             if (member instanceof FieldDeclaration) {
                 FieldDeclaration field = (FieldDeclaration) member;
                 int mods = field.getModifiers();
-                if (ModifierSet.isStatic(mods) && ModifierSet.isFinal(mods)) {
+                if (ModifierSet.isStatic(mods)) {
                     continue;
                 }
                 fields.add(rustVarName(field.getVariables().get(0).getId().getName()));
@@ -281,19 +283,46 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
         }
     }
 
-    private void printConstants(List<BodyDeclaration> members, Object arg) {
-        for (BodyDeclaration member : members) {
+    private List<FieldDeclaration> getStaticFields(ClassOrInterfaceDeclaration n) {
+        List<FieldDeclaration> fields = new LinkedList<FieldDeclaration>();
+
+        for (BodyDeclaration member : n.getMembers()) {
             if (member instanceof FieldDeclaration) {
                 FieldDeclaration field = (FieldDeclaration) member;
                 int mods = field.getModifiers();
-                if (!(ModifierSet.isStatic(mods) && ModifierSet.isFinal(mods))) {
-                    continue;
+                if (ModifierSet.isStatic(mods)) {
+                    fields.add(field);
                 }
-                constants.add(rustVarName(field.getVariables().get(0).getId().getName()));
-                printer.printLn();
-                member.accept(this, arg);
-                printer.printLn();                
             }
+        }
+
+        return fields;
+    }
+
+    private void printStaticFieldDecls(List<FieldDeclaration> fields, Object arg) {
+        for (FieldDeclaration field : fields) {
+            statics.add(rustVarName(field.getVariables().get(0).getId().getName()));
+            printer.printLn();
+            field.accept(this, arg);
+            printer.printLn();
+        }
+    }
+
+    private void printStaticFieldInits(List<FieldDeclaration> fields, Object arg) {
+        for (FieldDeclaration field : fields) {
+            List<VariableDeclarator> vars = field.getVariables();
+            if (vars.size() != 1) {
+                throw new RuntimeException();
+            }
+            VariableDeclarator decl = vars.get(0);
+            printer.print(rustVarName(decl.getId().getName()));
+
+            printer.print(": ");
+
+            Expression init = decl.getInit();
+            init.accept(this, arg);
+
+            printer.printLn(",");
         }
     }
     
@@ -341,6 +370,8 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
     public void visit(NameExpr n, Object arg) {
         if (fields.contains(n.getName())) {
             printer.print("self.");
+        } else if (statics.contains(n.getName())) {
+            printer.print(staticsName + "::get().");
         }
         printer.print(rustVarName(n.getName()));
     }
@@ -352,6 +383,8 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
     }
 
     public void visit(ClassOrInterfaceDeclaration n, Object arg) {
+        staticsName = n.getName() + "Statics";
+
         for (int i = 0; i < MODS.length; i++) {
             String mod = MODS[i];
             if (!mod.equals(n.getName())) {
@@ -363,12 +396,39 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
         
         printJavadoc(n.getJavaDoc(), arg);
 
+        List<FieldDeclaration> staticDecls = getStaticFields(n);
+        if (staticDecls.size() > 0) {
+            printer.print("struct " + staticsName + " {");
+            printer.indent();
+            printStaticFieldDecls(staticDecls, arg);
+            printer.unindent(); printer.print("}");
+            printer.printLn(); printer.printLn();
 
-        if (n.getMembers() != null) {
-            printConstants(n.getMembers(), arg);
+            printer.print("static mut global" + staticsName + ": *" + staticsName);
+            printer.printLn(" = 0 as *" + staticsName + ";");
+            printer.printLn();
+
+            printer.printLn("impl " + staticsName + " {");
+            printer.indent();
+
+            printer.printLn("unsafe fn init() {");
+            printer.indent();
+            printer.printLn("let global = ~" + staticsName + " {");
+            printer.indent();
+            printStaticFieldInits(staticDecls, arg);
+            printer.unindent(); printer.printLn("};");
+            printer.printLn("global" + staticsName + " = cast::transmute(global);");
+            printer.unindent(); printer.printLn("}");
+            printer.printLn();
+
+            printer.printLn("fn get() -> &'static " + staticsName + " {");
+            printer.indent();
+            printer.printLn("unsafe { cast::transmute(global" + staticsName + ") }");
+            printer.unindent(); printer.printLn("}");
+
+            printer.unindent(); printer.printLn("}");
+            printer.printLn(); printer.printLn();
         }
-        printer.printLn();
-        printer.printLn();
 
         printer.print("struct ");
 
@@ -524,24 +584,10 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
     public void visit(FieldDeclaration n, Object arg) {
         printJavadoc(n.getJavaDoc(), arg);
 //        printMemberAnnotations(n.getAnnotations(), arg);
-        
-        boolean field = true;
-        int mods = n.getModifiers();
-        if (ModifierSet.isStatic(mods) && ModifierSet.isFinal(mods)) {
-            if (!ModifierSet.isPrivate(mods)) {
-                printer.print("pub ");
-            }
-            printer.print("static ");
-            field = false;
-        } else if (!ModifierSet.isFinal(mods)) {
-            //printer.print("mut ");
-        }
-        
-        List<VariableDeclarator> vars = n.getVariables();
-        
-        printVariableDeclarator(n.getType(), vars, arg, field);
 
-        printer.print(field ? "," : ";");
+        List<VariableDeclarator> vars = n.getVariables();
+        printVariableDeclarator(n.getType(), vars, arg, true);
+        printer.print(",");
     }
 
     private void printVariableDeclarator(Type type, List<VariableDeclarator> vars,
@@ -804,7 +850,7 @@ public final class RustVisitor extends AnnotationHelperVisitor<Object> {
                 break;
             }
         }
-        printer.print(mod ? "::" : ".");
+        printer.print(mod ? "Statics::get()." : ".");
         if (is_length) {
             printer.print("len() as i32)");
         } else {
